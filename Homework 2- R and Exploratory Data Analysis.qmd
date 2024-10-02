@@ -4,6 +4,8 @@ format: html
 editor: visual
 ---
 
+Link to GitHub repository: https://github.com/annamitchell23/plan372-hw2
+
 Importing the data
 
 ```{r}

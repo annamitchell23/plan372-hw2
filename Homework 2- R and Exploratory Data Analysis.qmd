@@ -1,0 +1,388 @@
+---
+title: "Homework 2: R and Exploratory Data Analysis"
+format: html
+editor: visual
+---
+
+Importing the data
+
+```{r}
+data <- read.csv("restaurant_inspections.csv")
+```
+
+Loading packages
+
+```{r}
+library(stringr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+1.  Visualizing the overall distribution of inspection scores using a histogram
+
+```{r}
+ggplot(data, aes(x = SCORE)) +
+  geom_histogram(fill = "light blue", color = "black") +
+  theme_minimal()
+
+```
+
+I notice that there is a very small amount of zero scores, which are major outliers.
+
+2.  Is there any trend in terms of how highly older vs. newer restaurants score on their inspections?
+
+```{r}
+# Use lubridate package to convert times into something we can work with
+data <- data %>%
+  mutate(DATE_ = ymd_hms(DATE_),
+    RESTAURANTOPENDATE = ymd_hms(RESTAURANTOPENDATE, tz = "UTC")
+  )
+
+# Add a column called 'restaurants age' that calculates the age of the restaurant at the time of the inspection by subtracting the open date by the date of the inspection
+data <- data %>%
+  mutate(restaurants_age = a
+         
+         s.numeric(DATE_ - RESTAURANTOPENDATE) / 365)
+
+# I noticed that there were 296 missing data points for restaurant open date, so I will remove these missing values.
+data <- data %>%
+  filter(!is.na(RESTAURANTOPENDATE))
+
+# Plot inspection score vs. restaurant age
+ggplot(data, aes(x = restaurants_age, y = SCORE)) +
+  geom_point() +
+  labs(
+    title = "Inspection Score vs. Restaurant Age",
+    x = "Restaurant Age (Years)",
+    y = "Inspection Score"
+  ) +
+  theme_minimal()
+
+```
+
+I see a slight upward trend to the plot, meaning that older restaurants have clusters closer to the top of the plot with less outliers. Overall, I would say that older restaurants are more reliable to have a higher inspection score, but there are many young restaurants who have high scores as well (just slightly more variability in the 90-100 range).
+
+3.  Do the inspection scores vary by city?
+
+```{r}
+
+# Change all of the values in CITY to uppercase so they are all standardized
+data <- data %>%
+    mutate(CITY = str_to_upper(CITY))
+
+# Use recode to standardize the spelling of certain cities that had some inconsistencies
+data <- data %>%
+  mutate(CITY = recode(CITY,
+                      "FUQUAY VARINA" = "FUQUAY-VARINA",
+                      "HOLLY SPRING" = "HOLLY SPRINGS",
+                      "MORRISVILE" = "MORRISVILLE",
+                      "RTP" = "RESEARCH TRIANGLE PARK",
+                      "RALEIGH," = "RALEIGH",
+                      "RALEIGH NC" = "RALEIGH",
+                       .default = CITY))
+
+# Remove missing values for city as well as restaurants in 'North Carolina' as a whole (we only want Wake County).
+data <- data %>%
+  filter(!is.na(CITY)) %>%
+  filter(CITY != "NORTH CAROLINA")
+
+# Group by city and find the average score for each city
+city_score <- data %>%
+  group_by(CITY) %>%
+  summarise(city_average = mean(SCORE, na.rm = TRUE))
+
+# Plot the average inspection score by city, and order the cities by score in descending order
+ggplot(city_score, aes(x = reorder(CITY, - city_average), y = city_average)) +
+  geom_col(fill = "lightblue") +
+  coord_flip() +
+  geom_text(aes(label = round(city_average, 2))) +
+  labs(
+    title = "Average Inspection Scores in Wake County by City",
+    x = "City",
+    y = "Average Inspection Score"
+  ) +
+  theme_minimal()
+
+```
+
+I see that the average inspection score for Wake County cities doesn't vary too much, however, there are some with higher average scores and some with lower. We see that, on average, the three cities with the highest inspection scores are New Hill, Research Triangle Park, and Holly Springs, within the range of 98.36 and 99.75. The three cities with the lowest inspection rates, on average, are Angier, Zebulon, and Wendell, ranging from 94.5 5o 95.49. From the highest average score, 99.75, to the lowest average score, 94.5, there is a difference of 5.25, indicating a fair amount of variation between the cities' scores.
+
+4.  Is it possible that some inspectors may be more thorough than others? Do inspection scores vary by inspector?
+
+```{r}
+# Group by inspector and calculate the average score, and remove missing values of score. Sort by descending values of average score by inspector.
+
+inspector_scores_table <- data %>% 
+  group_by(INSPECTOR) %>% 
+  summarise(average_score = round(mean(SCORE, na.rm = TRUE), 2)) %>%
+  arrange(desc(average_score))
+
+# View the table
+print(inspector_scores_table)
+
+ggplot(data, aes(x = reorder(INSPECTOR, -SCORE), y = SCORE)) +
+  geom_boxplot() +
+  labs(
+    title = "Variation of Inspection Scores by Inspector",
+    x = "Inspector",
+    y = "Inspection Score"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+There is some variance when it comes to inspection scores by inspector. Some inspectors average scores of 96, while some average 97s and 98s. One inspector averages scores of 99.
+
+5.  Are sample sizes impacting the results and/or providing extreme results?
+
+```{r}
+# Group by city and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of inspection count.
+city_sample_sizes <- data %>%
+  group_by(CITY) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(inspection_count))
+
+# Group by inspector and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of inspection count.
+inspector_sample_sizes <- data %>%
+  group_by(INSPECTOR) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(inspection_count))
+
+# Create age groups for restaurants
+data <- data %>%
+  mutate(age_group = cut(
+    restaurants_age,
+    breaks = c(0, 5, 10, 15, 20, 25, 30, Inf),
+    labels = c("0-5", "5-10", "10-15", "15-20", "20-25", "25-30", "30+"),
+    right = FALSE 
+  ))
+
+# Group by age group and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of age group.
+age_sample_sizes <- data %>%
+  group_by(age_group) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(age_group))
+
+
+print(city_sample_sizes)
+print(inspector_sample_sizes)
+print(age_sample_sizes)
+
+```
+
+In terms of sample sizes within the city, I think there could be some evidence that the small amount of restaurants in the smaller cities could be leading to a lower average inspection score. For example, there are only 50 inspections in Zebulon compared to Raleigh's 1895. Raleigh has more data points, so any low scores might affect their overall average score less. A low score in Zebulon would really bring the average down.
+
+In terms of sample sizes for inspectors, the amount of inspections per inspector varies- the lowest has only 26 inspections while the highest has 179. However, those two inspector's average scores are almost the same (96.27 vs 96.02). I don't see a big pattern here in terms of the amount of inspections an inspector has done versus their average score.
+
+Lastly, in terms of age, there are some age groups that have far less inspection scores than others. However, I don't see any convincing patterns between the inspection count and the average inspection score. All of the age group's average scores are within 0.71 of each other.
+
+6.  Are the scores for restaurants higher than other facilities?
+
+```{r}
+# Group by facility type and calculate the average score and count of inspections. Remove any missing values of score and sort in descending order by average score.
+facility_scores <- data %>%
+  group_by(FACILITYTYPE) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2)) %>%
+  arrange(desc(average_score))
+
+# View the facility scores table
+print(facility_scores)
+
+# Graph the facility scores table using a bar plot. Reorder the facilities in descending order of average score.
+ggplot(facility_scores, aes(x = reorder(FACILITYTYPE, - average_score), y = average_score)) +
+  geom_col(fill = "light blue") +
+  geom_text(aes(label = round(average_score, 2))) +
+  labs(
+    title = "Average Inspection Scores by Facility Type",
+    x = "Facility Type",
+    y = "Average Inspection Score"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
+
+```
+
+From the graph, we can see that there is some variability in average inspection scores for different types of facilities. In fact, restaurants have the lowest average inspection scores out of all facilities with an average score of 96.68. Nutrition Sites (catered) have the highest average inspection score of 99.25
+
+7.  Completing analysis for restaurants specifically:
+
+```{r}
+# Filter data for restaurants only
+restaurant_data <- data %>%
+  filter(FACILITYTYPE == "Restaurant")
+
+ggplot(data, aes(x = SCORE)) +
+  geom_histogram(fill = "light blue", color = "black") +
+  theme_minimal()
+```
+
+This histogram looks very similar to the one including all types of facilities, indicating that restaurants may make up the majority of the data set.
+
+```{r}
+# 2. Trend of older vs. newer restaurant's inspection scores:
+
+# Use lubridate package to convert times into something we can work with
+data <- restaurant_data %>%
+  mutate(DATE_ = ymd_hms(DATE_),
+    RESTAURANTOPENDATE = ymd_hms(RESTAURANTOPENDATE, tz = "UTC")
+  )
+
+# Add a column called 'restaurants age' that calculates the age of the restaurant at the time of the inspection by subtracting the open date by the date of the inspection
+data <- restaurant_data %>%
+  mutate(restaurants_age = as.numeric(DATE_ - RESTAURANTOPENDATE) / 365)
+
+# I noticed that there were missing data points for restaurant open date, so I will remove these missing values.
+data <- data %>%
+  filter(!is.na(RESTAURANTOPENDATE))
+
+# Plot inspection score vs. restaurant age
+ggplot(data, aes(x = restaurants_age, y = SCORE)) +
+  geom_point() +
+  labs(
+    title = "Inspection Score vs. Restaurant Age, for Restaurants",
+    x = "Restaurant Age (Years)",
+    y = "Inspection Score"
+  ) +
+  theme_minimal()
+```
+
+We can see that there is a slight upwards trend, indicating that older restaurants tend to recieve higher inspection scores.
+
+```{r}
+
+# Does inspectionr ate vary by city?
+
+# Change all of the values in CITY to uppercase so they are all standardized
+restaurant_data <- restaurant_data %>%
+    mutate(CITY = str_to_upper(CITY))
+
+# Use recode to standardize the spelling of certain cities that had some inconsistencies
+restaurant_data <- restaurant_data %>%
+  mutate(CITY = recode(CITY,
+                      "FUQUAY VARINA" = "FUQUAY-VARINA",
+                      "HOLLY SPRING" = "HOLLY SPRINGS",
+                      "MORRISVILE" = "MORRISVILLE",
+                      "RTP" = "RESEARCH TRIANGLE PARK",
+                      "RALEIGH," = "RALEIGH",
+                      "RALEIGH NC" = "RALEIGH",
+                       .default = CITY))
+
+# Remove missing values for city as well as restaurants in 'North Carolina' as a whole (we only want Wake County).
+restaurant_data <- restaurant_data %>%
+  filter(!is.na(CITY)) %>%
+  filter(CITY != "NORTH CAROLINA")
+
+# Group by city and find the average score for each city
+city_score <- restaurant_data %>%
+  group_by(CITY) %>%
+  summarise(city_average = mean(SCORE, na.rm = TRUE))
+
+# Plot the average inspection score by city, and order the cities by score in descending order
+ggplot(city_score, aes(x = reorder(CITY, - city_average), y = city_average)) +
+  geom_col(fill = "lightblue") +
+  coord_flip() +
+  geom_text(aes(label = round(city_average, 2))) +
+  labs(
+    title = "Average Inspection Scores in Wake County by City, for Restaurants",
+    x = "City",
+    y = "Average Inspection Score"
+  ) +
+  theme_minimal()
+
+
+```
+
+Here, we can see that the average scores for each city for restaurants specifically is different than for all failities. The average scores for the lowest scoring cities goes down to the 93s, and more cities have average scores in the 94s, 95s, and 96s. We can assume that facilities other than restaurants tend to have higher scores, and that restaurants were bringing down the average inspection scores for cities. (Interestingly, that doesn't seem to be the case for New Hill- focusing on restaurants only actually raised their average score all the way to 100.)
+
+```{r}
+
+# Do inspection scores vary by inspector?
+
+# Group by inspector and calculate the average score, and remove missing values of score. Sort by descending values of average score by inspector.
+
+inspector_scores_table <- restaurant_data %>% 
+  group_by(INSPECTOR) %>% 
+  summarise(average_score = round(mean(SCORE, na.rm = TRUE), 2)) %>%
+  arrange(desc(average_score))
+
+# View the table
+print(inspector_scores_table)
+
+# Boxplot of inspection scores by inspector, in descending order of average score.
+ggplot(restaurant_data, aes(x = reorder(INSPECTOR, -SCORE), y = SCORE)) +
+  geom_boxplot() +
+  labs(
+    title = "Variation of Inspection Scores by Inspector, for Restaurants",
+    x = "Inspector",
+    y = "Inspection Score"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+We can see that there is still some variance in inspection scores when it comes to individual inspectors, and we could say that inspection scores do vary by inspector. We don't know why though, and we can't assume it is because some are more thorough. Maybe some inspectors get the restaurants that are genuinely more dirty.
+
+```{r}
+
+# Does sample size affect extreme results?
+
+# Group by city and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of inspection count.
+city_sample_sizes <- restaurant_data %>%
+  group_by(CITY) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(inspection_count))
+
+# Group by inspector and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of inspection count.
+inspector_sample_sizes <- restaurant_data %>%
+  group_by(INSPECTOR) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(inspection_count))
+
+# Create age groups for restaurants
+data <- restaurant_data %>%
+  mutate(age_group = cut(
+    restaurants_age,
+    breaks = c(0, 5, 10, 15, 20, 25, 30, Inf),
+    labels = c("0-5", "5-10", "10-15", "15-20", "20-25", "25-30", "30+"),
+    right = FALSE 
+  ))
+
+# Group by age group and calculate average score and inspection count for each city. Remove missing values for score. Sort in descending order of age group.
+age_sample_sizes <- restaurant_data %>%
+  group_by(age_group) %>%
+  summarise(
+    average_score = round(mean(SCORE, na.rm = TRUE), 2),
+    inspection_count = n()
+  ) %>%
+  arrange(desc(age_group))
+
+
+print(city_sample_sizes)
+print(inspector_sample_sizes)
+print(age_sample_sizes)
+```
+
+Similarly to the last analysis regarding all facility types, I think there could be some evidence that the small amount of restaurants in the smaller cities could be leading to a lower average inspection score. Again, Zebulon has even less facilities when we focus on only restaurants (50 to 31), so one low inspection score for them could really impact their average score. While the total number of inspections for Raleigh also went down significantly when focusing only on restaurants, they still have a large amount of inspections so that one bad value may not affect the overall average as much.
+
+In terms of inspector, I don't see too many patterns in the average inspection score for each inspector, and the amount of inspections that they've done. Some of the inspectors that have done the most inspections have lower scores than those that have done few inspections, and vice versa.
+
+Lastly, with age group, I think there is even less of a pattern here between the number of inspections and the average inspection score for each age group. Th average scores are all within 0.67 of each other, down from 0.71. So, I do not think that the number of inspections that each age group has recieved is affecting the overall average inspection score for that age group.
